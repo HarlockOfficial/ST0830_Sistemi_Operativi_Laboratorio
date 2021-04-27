@@ -13,6 +13,7 @@ long long int input(char **arr){
         (*arr)[i++] = (char)ch;
         (*arr) = (char*)realloc(*arr, sizeof(char)*(i+1));
         if((*arr)==NULL){
+            free(*arr);
             perror("Error editing string, no space left\n");
             return -1;
         }

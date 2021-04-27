@@ -14,6 +14,7 @@ int main() {
     long long int len = input(&input_string);
     if(len <= 0){
         if(len==0) {
+            free(input_string);
             perror("Empty String\n");
         }
         exit(1);
