@@ -21,3 +21,16 @@ long long int input(char **arr){
     (*arr)[i]=0;
     return i;
 }
+
+int sanitise(const char *input, int n, char **output){
+    *output=calloc(n, sizeof(char));
+    int len=0;
+    for(int i = 0;i<n;++i){
+        if(input[i]>='a' && input[i]<='z'){
+            *output[len++]=input[i]-'a'+'A';
+        }else if(input[i]>='A' && input[i]<='Z'){
+            *output[len++]=input[i];
+        }
+    }
+    return len;
+}
