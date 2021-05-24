@@ -1,27 +1,22 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include "bvernan.h"
 
 int apply(FILE *key_file, FILE *input_file, FILE *output_file);
-int transform(FILE *key_file, FILE *input_file, FILE *output_file);
-long get_file_length(FILE *fp);
-int file_error_check(FILE *fp);
-
-typedef unsigned char byte;
+int transform(FILE *key_file, FILE *input_file, FILE *output_file, int shift, long block_length);
 
 int apply_vernam(char *key_filename, char *input_filename, char *output_filename){
     FILE *key, *input, *output;
     int ret;
-    key = fopen(key_filename, "r");
+    key = fopen(key_filename, "rb");
     if (key == NULL) {
         ret = 1;
     } else {
-        input = fopen(input_filename, "r");
+        input = fopen(input_filename, "rb");
         if (input == NULL) {
             ret = 1;
             fclose(key);
         } else {
-            output = fopen(output_filename, "w");
+            output = fopen(output_filename, "wb");
             if (output == NULL) {
                 ret = 1;
                 fclose(key);
@@ -38,34 +33,37 @@ int apply_vernam(char *key_filename, char *input_filename, char *output_filename
 }
 
 int apply(FILE *key_file, FILE *input_file, FILE *output_file){
-    long key_length, input_length;
-    key_length = get_file_length(key_file);
-    input_length = get_file_length(input_file);
+    long key_length = get_file_length(key_file);
+    long input_length = get_file_length(input_file);
+    if(key_length==0){
+        return 1;
+    }
     long block_count = (input_length / key_length) + (input_length % key_length == 0 ? 0 : 1);
-    int res;
+    int ret;
     for(int i=0; i < block_count; ++i){
-        res = transform(key_file, input_file, output_file);
-        if(res!=0){
+        ret = transform(key_file, input_file, output_file, i, key_length);
+        if(ret != 0){
             break;
         }
     }
-    return res;
+    return ret;
 }
 
-int transform(FILE *key_file, FILE *input_file, FILE *output_file) {
+int transform(FILE *key_file, FILE *input_file, FILE *output_file, int shift, long block_length) {
+    fseek(key_file, shift%block_length, SEEK_SET);
     int ret = 0;
-    while(!feof(key_file)){
+    for(int i=0;i<block_length;++i){
         byte d,b,d1;
-        if(!feof(input_file)){
-            fread(&d, sizeof(byte), 1, input_file);
-            if((ret=file_error_check(input_file))!=0){
-                break;
-            }
-        }else{
-            d = rand() % 0xff;
+        if(feof(key_file)){
+            fseek(key_file, 0, SEEK_SET);
         }
-        fread(&b, sizeof(byte), 1, key_file);
-        if((ret=file_error_check(key_file))!=0){
+        if(feof(input_file)){
+            break;
+        }
+        if((ret = read_byte(&d, input_file))!=0){
+            break;
+        }
+        if((ret = read_byte(&b, key_file))!=0){
             break;
         }
         d1 = b ^ d;
@@ -74,7 +72,6 @@ int transform(FILE *key_file, FILE *input_file, FILE *output_file) {
             break;
         }
     }
-    fseek(key_file, 0, SEEK_SET);
     return ret;
 }
 
@@ -91,4 +88,9 @@ int file_error_check(FILE *fp){
         return 1;
     }
     return 0;
+}
+
+int read_byte(byte *b, FILE *fp){
+    fread(b, sizeof(byte), 1, fp);
+    return file_error_check(fp);
 }
