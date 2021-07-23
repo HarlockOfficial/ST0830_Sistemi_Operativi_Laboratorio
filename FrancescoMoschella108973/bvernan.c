@@ -1,102 +1,77 @@
-#include <stdio.h>
+#include "utilities.h"
+#include "bvernan_data.h"
 #include "bvernan.h"
+#include "byte_type.h"
 
-typedef struct data_t {
-    FILE *input, *output, *key;
-    long block_length, input_length;
-}data;
 
-int apply(data *d);
-int transform(data *d, int shift);
-int initialize_data(char *key_filename, char *input_filename, char *output_filename, data* d);
-void clean_data(data* d);
+int apply_encryption(data d);
 
-int apply_vernam(char *key_filename, char *input_filename, char *output_filename){
+//int apply_encryption_alt(data d);
+
+int read_and_encrypt_byte(data d);
+
+int apply_vernam(const char *key_filename, const char *input_filename, const char *output_filename) {
     data d;
-    if(initialize_data(key_filename, input_filename, output_filename, &d)!=0){
+    if (initialize_data(key_filename, input_filename, output_filename, &d) != 0) {
         return 1;
     }
-    if(apply(&d)!=0){
+    if (apply_encryption(d) != 0) {
         return 1;
     }
     clean_data(&d);
     return 0;
 }
 
-long get_file_length(FILE *fp){
-    fseek(fp, 0, SEEK_END);
-    long length = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    return length;
+int apply_encryption(const data d) {
+    long block_count = (d.input_length / d.block_length) +
+                       (d.input_length % d.block_length == 0 ? 0 : 1);
+    int ret = 0;
+    for (long block_index = 0; block_index < block_count; ++block_index) {
+        fseek(d.key, block_index % d.block_length, SEEK_SET);
+        for (long byte_index = 0; byte_index < d.block_length; ++byte_index) {
+            if ((ret = read_and_encrypt_byte(d)) != 0) {
+                break;
+            }
+        }
+    }
+    return ret <= 0 ? 0 : ret;
 }
 
-int file_error_check(FILE *fp){
-    if(ferror(fp)){
-        perror("Error during file operation, quitting");
+/*
+//feof is slower then for i in block count
+int apply_encryption_alt(const data d){
+    int ret = 0, block_index=0;
+    while(!feof(d.input)){
+        fseek(d.key, block_index%d.block_length, SEEK_SET);
+        for (long byte_index = 0; byte_index < d.block_length; ++byte_index) {
+            if ((ret = read_and_encrypt_byte(d)) != 0) {
+                break;
+            }
+        }
+        ++block_index;
+    }
+    return ret<=0?0:ret;
+}
+*/
+int read_and_encrypt_byte(const data d) {
+    byte _d, _b, _d1;
+    int ret = read_next_byte(&_d, d.input);
+    if (ret != 0) {
+        return ret;
+    }
+    ret = read_next_byte(&_b, d.key);
+    if (ret == -1) {
+        //key eof
+        fseek(d.key, 0, SEEK_SET);
+        ret = read_next_byte(&_b, d.key);
+    }
+    if (ret != 0) {
+        return ret;
+    }
+    _d1 = _b ^ _d;
+    fwrite(&_d1, sizeof(byte), 1, d.output);
+    if (file_error_check(d.output) != 0) {
         return 1;
     }
     return 0;
-}
-
-int read_byte(byte *b, FILE *fp){
-    fread(b, sizeof(byte), 1, fp);
-    return file_error_check(fp);
-}
-
-int apply(data* d){
-    long block_count = (d->input_length / d->block_length) +
-                       (d->input_length % d->block_length == 0 ? 0 : 1);
-    int ret;
-    for(int i=0; i < block_count; ++i){
-        if((ret = transform(d, i))!=0){
-            break;
-        }
-    }
-    return ret;
-}
-
-int transform(data *d, int shift) {
-    fseek(d->key, shift%(d->block_length), SEEK_SET);
-    int ret = 0;
-    for(int i=0;i<d->block_length;++i){
-        byte _d,_b,_d1;
-        if((ret = read_byte(&_d, d->input))!=0){
-            break;
-        }
-        if((ret = read_byte(&_b, d->key))!=0){
-            break;
-        }
-        if(feof(d->key)){
-            fseek(d->key, 0, SEEK_SET);
-        }
-        if(feof(d->input)){
-            break;
-        }
-        _d1 = _b ^ _d;
-        fwrite(&_d1, sizeof(byte), 1, d->output);
-        if((ret=file_error_check(d->output))!=0){
-            break;
-        }
-    }
-    return ret;
-}
-
-int initialize_data(char *key_filename, char *input_filename, char *output_filename, data *d){
-    d->key = fopen(key_filename, "rb");
-    d->input = fopen(input_filename, "rb");
-    d->output = fopen(output_filename, "wb");
-    d->block_length = get_file_length(d->key);
-    d->input_length = get_file_length(d->input);
-    return d->key == NULL || d->input == NULL || d->output == NULL || d->block_length<=0 || d->input_length <= 0;
-}
-
-void clean_data(data *d){
-    fclose(d->key);
-    fclose(d->input);
-    fclose(d->output);
-    d->key = NULL;
-    d->input = NULL;
-    d->output = NULL;
-    d->block_length = 0;
-    d->input_length = 0;
 }
